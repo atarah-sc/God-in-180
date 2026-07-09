@@ -550,16 +550,41 @@
   // 1) PASTE YOUR FIREBASE WEB APP CONFIG HERE (see setup steps provided
   //    alongside this file). Everything else works as-is once this is set.
   // ======================================================================
+
+  <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyDaU3XYBXLAUf7ln9ghbh78GYEqzNWX7_o",
+    authDomain: "atarah-god-in-180.firebaseapp.com",
+    projectId: "atarah-god-in-180",
+    storageBucket: "atarah-god-in-180.firebasestorage.app",
+    messagingSenderId: "1055896754988",
+    appId: "1:1055896754988:web:a92d9d111d22f32ae72a89",
+    measurementId: "G-QK0MP2QY4W"
   };
 
-  if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY"){
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+  
+  const firebaseConfig = {
+    apiKey: "AIzaSyDaU3XYBXLAUf7ln9ghbh78GYEqzNWX7_o",
+    authDomain: "atarah-god-in-180.firebaseapp.com",
+    projectId: "atarah-god-in-180",
+    storageBucket: "atarah-god-in-180.firebasestorage.app",
+    messagingSenderId: "1055896754988",
+    appId: "1:1055896754988:web:a92d9d111d22f32ae72a89"
+  };
+
+  if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "AIzaSyDaU3XYBXLAUf7ln9ghbh78GYEqzNWX7_o"){
     document.getElementById('setupNotice').style.display = 'block';
     return; // stop here until config is filled in
   }
