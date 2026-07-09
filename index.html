@@ -547,555 +547,549 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
 <script>
 (function(){
-// ======================================================================
-// Firebase web app config — wired to the "atarah-god-in-180" project.
-// ======================================================================
-const firebaseConfig = {
-apiKey: "AIzaSyDaU3XYBXLAUf7ln9ghbh78GYEqzNWX7_o",
-authDomain: "atarah-god-in-180.firebaseapp.com",
-projectId: "atarah-god-in-180",
-storageBucket: "atarah-god-in-180.firebasestorage.app",
-messagingSenderId: "1055896754988",
-appId: "1:1055896754988:web:a92d9d111d22f32ae72a89",
-measurementId: "G-QK0MP2QY4W"
-};
+  // ======================================================================
+  // CHANGE YOUR ADMIN PASSWORD HERE
+  // ======================================================================
+  const ADMIN_PASSWORD = "gi180"; 
 
-// Safe check if Firebase script didn't load from gstatic
-if (typeof firebase === 'undefined') {
-alert("Error: Firebase SDK failed to load. Please check your internet connection or disable any strict ad-blockers blocking gstatic.com.");
-fallbackLocalSetup();
-return;
-}
+  // Firebase web app config — wired to the "atarah-god-in-180" project.
+  const firebaseConfig = {
+    apiKey: "AIzaSyDaU3XYBXLAUf7ln9ghbh78GYEqzNWX7_o",
+    authDomain: "atarah-god-in-180.firebaseapp.com",
+    projectId: "atarah-god-in-180",
+    storageBucket: "atarah-god-in-180.firebasestorage.app",
+    messagingSenderId: "1055896754988",
+    appId: "1:1055896754988:web:a92d9d111d22f32ae72a89",
+    measurementId: "G-QK0MP2QY4W"
+  };
 
-if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY"){
-document.getElementById('setupNotice').style.display = 'block';
-return;
-}
+  if (typeof firebase === 'undefined') {
+    alert("Error: Firebase SDK failed to load. Please check your internet connection.");
+    fallbackLocalSetup();
+    return;
+  }
 
-let db;
-let teamsDoc;
-let scoresCol;
-let claimsCol;
+  if(!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY"){
+    document.getElementById('setupNotice').style.display = 'block';
+    return; 
+  }
 
-try {
-firebase.initializeApp(firebaseConfig);
-try{ firebase.analytics(); }catch(e){}
-db = firebase.firestore();
-teamsDoc = db.collection('g180').doc('teams');
-scoresCol = db.collection('g180_scores');
-claimsCol = db.collection('g180_claims');
-} catch (err) {
-console.error("Firebase Initialization Error:", err);
-alert("Firebase failed to initialize. Falling back to offline mode.");
-fallbackLocalSetup();
-return;
-}
+  let db, teamsDoc, scoresCol, claimsCol;
 
-const CRIT = [
-{key:'theme', name:'Theme', color:'var(--gold)', hex:'#c9a24b'},
-{key:'story', name:'Storytelling', color:'var(--wine)', hex:'#8a2244'},
-{key:'edit', name:'Editing', color:'var(--teal)', hex:'#3f8f8a'},
-{key:'tech', name:'Technical', color:'var(--lav)', hex:'#8b7bc4'}
-];
-const MY_LOCK_KEY = 'g180_mylock';
-const DEFAULT_TEAMS = Array.from({length:21}, (_,i) => 'Team ' + (i+1));
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    teamsDoc = db.collection('g180').doc('teams');
+    scoresCol = db.collection('g180_scores');
+    claimsCol = db.collection('g180_claims');
+  } catch (err) {
+    fallbackLocalSetup();
+    return;
+  }
 
-let teams = [];
-let toastTimer = null;
-let myLock = null;
-let leaderboardUnsub = null;
+  const CRIT = [
+    {key:'theme', name:'Theme', color:'var(--gold)', hex:'#c9a24b'},
+    {key:'story', name:'Storytelling', color:'var(--wine)', hex:'#8a2244'},
+    {key:'edit', name:'Editing', color:'var(--teal)', hex:'#3f8f8a'},
+    {key:'tech', name:'Technical', color:'var(--lav)', hex:'#8b7bc4'}
+  ];
+  const MY_LOCK_KEY = 'g180_mylock'; 
+  const DEFAULT_TEAMS = Array.from({length:21}, (_,i) => 'Team ' + (i+1));
 
-// ---------- helpers ----------
-function uid(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function showToast(msg){
-const el = document.getElementById('toast');
-if(!el) return;
-el.textContent = msg;
-el.classList.add('show');
-clearTimeout(toastTimer);
-toastTimer = setTimeout(()=> el.classList.remove('show'), 2600);
-}
-function scoreDocId(teamId, judgeNum){ return teamId + '_' + judgeNum; }
+  let teams = [];
+  let toastTimer = null;
+  let myLock = null; 
+  let leaderboardUnsub = null; 
+  let isAdminAuthenticated = false; // Tracks password bypass status
 
-// ---------- tabs ----------
-document.querySelectorAll('.tab-btn').forEach(btn=>{
-btn.addEventListener('click', ()=>{
-document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-btn.classList.add('active');
-document.getElementById('view-'+btn.dataset.view).classList.add('active');
-if(btn.dataset.view === 'leaderboard') startLeaderboardListener(); else stopLeaderboardListener();
-if(btn.dataset.view === 'teams'){ renderTeamList(); renderClaimList(); }
-});
-});
+  function uid(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function showToast(msg){
+    const el = document.getElementById('toast');
+    if(!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> el.classList.remove('show'), 2600);
+  }
+  function scoreDocId(teamId, judgeNum){ return teamId + '_' + judgeNum; }
 
-// ---------- judge selector ----------
-const judgeSelect = document.getElementById('judgeSelect');
-async function loadAvailableJudges(){
-const startBtn = document.getElementById('startJudgingBtn');
-let claimedNums = new Set();
+  // ---------- updated tab control with password gate ----------
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const targetView = btn.dataset.view;
 
-if (claimsCol) {
-try{
-const snap = await claimsCol.get();
-snap.docs.forEach(d => claimedNums.add(Number(d.id)));
-}catch(e){
-console.warn("Could not fetch claims from Firestore. Displaying all slots.", e);
-}
-}
+      // Admin password prompt interceptor
+      if (targetView === 'teams' && !isAdminAuthenticated) {
+        const pass = prompt("Enter Admin Password to manage teams:");
+        if (pass === ADMIN_PASSWORD) {
+          isAdminAuthenticated = true;
+          showToast("Admin access granted.");
+        } else {
+          if (pass !== null) alert("Incorrect password. Access denied.");
+          return; // Aborts shifting to the teams view
+        }
+      }
 
-populateJudgeDropdown(claimedNums, startBtn);
-}
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('view-'+targetView).classList.add('active');
+      
+      if(targetView === 'leaderboard') startLeaderboardListener(); else stopLeaderboardListener();
+      if(targetView === 'teams'){ renderTeamList(); renderClaimList(); }
+    });
+  });
 
-function populateJudgeDropdown(claimedNums, startBtn) {
-const prevVal = judgeSelect.value;
-judgeSelect.innerHTML = '';
-for(let i=1;i<=30;i++){
-if(claimedNums && claimedNums.has(i)) continue;
-const o = document.createElement('option');
-o.value = i; o.textContent = 'Judge ' + i;
-judgeSelect.appendChild(o);
-}
-if(judgeSelect.options.length === 0){
-const o = document.createElement('option');
-o.value = ''; o.textContent = 'All judge slots are taken';
-judgeSelect.appendChild(o);
-if(startBtn) startBtn.disabled = true;
-} else {
-if(prevVal && [...judgeSelect.options].some(o=>o.value===prevVal)) judgeSelect.value = prevVal;
-if(startBtn) startBtn.disabled = false;
-}
-}
+  // ---------- judge selector ----------
+  const judgeSelect = document.getElementById('judgeSelect');
+  async function loadAvailableJudges(){
+    const startBtn = document.getElementById('startJudgingBtn');
+    let claimedNums = new Set();
+    if (claimsCol) {
+      try{
+        const snap = await claimsCol.get();
+        snap.docs.forEach(d => claimedNums.add(Number(d.id)));
+      }catch(e){}
+    }
+    populateJudgeDropdown(claimedNums, startBtn);
+  }
 
-// ---------- teams ----------
-async function loadTeams(){
-if (teamsDoc) {
-try{
-const snap = await teamsDoc.get();
-teams = snap.exists ? snap.data().teams : null;
-}catch(e){
-console.error("Firestore read error for teams:", e);
-teams = null;
-}
-}
-if(!teams || !Array.isArray(teams) || teams.length === 0){
-teams = DEFAULT_TEAMS.map(n => ({id: uid(), name: n}));
-if (teamsDoc) {
-try { await teamsDoc.set({teams}); } catch(e) { console.error("Firestore write error for teams:", e); }
-}
-}
-renderTeamSelect();
-renderTeamList();
-}
-async function saveTeams(){
-if (teamsDoc) {
-try { await teamsDoc.set({teams}); } catch(e) { alert("Failed to sync team changes to cloud database."); }
-}
-renderTeamSelect();
-}
-function renderTeamSelect(){
-const sel = document.getElementById('teamSelect');
-if(!sel) return;
-const prev = sel.value;
-sel.innerHTML = '';
-teams.forEach(t=>{
-const o = document.createElement('option');
-o.value = t.id; o.textContent = t.name;
-sel.appendChild(o);
-});
-if(prev && teams.some(t=>t.id===prev)) sel.value = prev;
-loadExistingScoreForSelection();
-}
-function renderTeamList(){
-const wrap = document.getElementById('teamList');
-if(!wrap) return;
-wrap.innerHTML = '';
-if(teams.length === 0){
-wrap.innerHTML = '<div class="empty-state"><div class="glyph">🎞️</div>No teams yet — add one below.</div>';
-return;
-}
-teams.forEach(t=>{
-const row = document.createElement('div');
-row.className = 'team-row';
-row.innerHTML = `
-<input type="text" value="${escapeHtml(t.name)}" data-id="${t.id}">
-<button class="icon-btn danger" data-id="${t.id}" title="Remove team">🗑</button>
-`;
-wrap.appendChild(row);
-});
-wrap.querySelectorAll('input[type=text]').forEach(inp=>{
-inp.addEventListener('change', async (e)=>{
-const t = teams.find(x=>x.id === e.target.dataset.id);
-if(t){ t.name = e.target.value.trim() || t.name; await saveTeams(); showToast('Team name updated'); }
-});
-});
-wrap.querySelectorAll('button.icon-btn').forEach(btn=>{
-btn.addEventListener('click', async (e)=>{
-const id = e.target.dataset.id;
-const t = teams.find(x=>x.id===id);
-if(!t) return;
-if(!confirm(`Remove "${t.name}"? Its submitted scores will remain stored but won't be shown.`)) return;
-teams = teams.filter(x=>x.id!==id);
-await saveTeams();
-renderTeamList();
-showToast('Team removed');
-});
-});
-}
-document.getElementById('addTeamBtn').addEventListener('click', async ()=>{
-const inp = document.getElementById('newTeamName');
-const name = inp.value.trim();
-if(!name) return;
-teams.push({id: uid(), name});
-inp.value = '';
-await saveTeams();
-renderTeamList();
-showToast('Team added');
-});
-document.getElementById('newTeamName').addEventListener('keydown', (e)=>{
-if(e.key === 'Enter') document.getElementById('addTeamBtn').click();
-});
-function escapeHtml(s){
-return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+  function populateJudgeDropdown(claimedNums, startBtn) {
+    const prevVal = judgeSelect.value;
+    judgeSelect.innerHTML = '';
+    for(let i=1;i<=30;i++){
+      if(claimedNums && claimedNums.has(i)) continue;
+      const o = document.createElement('option');
+      o.value = i; o.textContent = 'Judge ' + i;
+      judgeSelect.appendChild(o);
+    }
+    if(judgeSelect.options.length === 0){
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = 'All judge slots are taken';
+      judgeSelect.appendChild(o);
+      if(startBtn) startBtn.disabled = true;
+    } else {
+      if(prevVal && [...judgeSelect.options].some(o=>o.value===prevVal)) judgeSelect.value = prevVal;
+      if(startBtn) startBtn.disabled = false;
+    }
+  }
 
-// ---------- scoring ----------
-const sliders = {};
-CRIT.forEach(c=>{
-sliders[c.key] = document.getElementById('s-'+c.key);
-if(sliders[c.key]) {
-sliders[c.key].addEventListener('input', ()=>{
-document.getElementById('val-'+c.key).textContent = sliders[c.key].value;
-updateGauge();
-});
-}
-});
+  // ---------- teams ----------
+  async function loadTeams(){
+    if (teamsDoc) {
+      try{
+        const snap = await teamsDoc.get();
+        teams = snap.exists ? snap.data().teams : null;
+      }catch(e){ teams = null; }
+    }
+    if(!teams || !Array.isArray(teams) || teams.length === 0){
+      teams = DEFAULT_TEAMS.map(n => ({id: uid(), name: n}));
+      if (teamsDoc) {
+        try { await teamsDoc.set({teams}); } catch(e) {}
+      }
+    }
+    renderTeamSelect();
+  }
+  async function saveTeams(){
+    if (teamsDoc) {
+      try { await teamsDoc.set({teams}); } catch(e) { alert("Failed to sync team changes."); }
+    }
+    renderTeamSelect();
+  }
+  function renderTeamSelect(){
+    const sel = document.getElementById('teamSelect');
+    if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    teams.forEach(t=>{
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.name;
+      sel.appendChild(o);
+    });
+    if(prev && teams.some(t=>t.id===prev)) sel.value = prev;
+    loadExistingScoreForSelection();
+  }
+  function renderTeamList(){
+    const wrap = document.getElementById('teamList');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+    if(teams.length === 0){
+      wrap.innerHTML = '<div class="empty-state"><div class="glyph">🎞️</div>No teams yet — add one below.</div>';
+      return;
+    }
+    teams.forEach(t=>{
+      const row = document.createElement('div');
+      row.className = 'team-row';
+      row.innerHTML = `
+        <input type="text" value="${escapeHtml(t.name)}" data-id="${t.id}">
+        <button class="icon-btn danger" data-id="${t.id}" title="Remove team">🗑</button>
+      `;
+      wrap.appendChild(row);
+    });
+    wrap.querySelectorAll('input[type=text]').forEach(inp=>{
+      inp.addEventListener('change', async (e)=>{
+        const t = teams.find(x=>x.id === e.target.dataset.id);
+        if(t){ t.name = e.target.value.trim() || t.name; await saveTeams(); showToast('Team name updated'); }
+      });
+    });
+    wrap.querySelectorAll('button.icon-btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const id = e.target.dataset.id;
+        const t = teams.find(x=>x.id===id);
+        if(!t) return;
+        if(!confirm(`Remove "${t.name}"?`)) return;
+        teams = teams.filter(x=>x.id!==id);
+        await saveTeams();
+        renderTeamList();
+        showToast('Team removed');
+      });
+    });
+  }
+  document.getElementById('addTeamBtn').addEventListener('click', async ()=>{
+    const inp = document.getElementById('newTeamName');
+    const name = inp.value.trim();
+    if(!name) return;
+    teams.push({id: uid(), name});
+    inp.value = '';
+    await saveTeams();
+    renderTeamList();
+    showToast('Team added');
+  });
+  document.getElementById('newTeamName').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('addTeamBtn').click();
+  });
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
 
-function currentTotal(){
-return CRIT.reduce((sum,c)=> sum + Number(sliders[c.key] ? sliders[c.key].value : 0), 0);
-}
+  // ---------- scoring ----------
+  const sliders = {};
+  CRIT.forEach(c=>{
+    sliders[c.key] = document.getElementById('s-'+c.key);
+    if(sliders[c.key]) {
+      sliders[c.key].addEventListener('input', ()=>{
+        document.getElementById('val-'+c.key).textContent = sliders[c.key].value;
+        updateGauge();
+      });
+    }
+  });
 
-function updateGauge(){
-const g = document.getElementById('gaugeSegs');
-if(!g) return;
-const svgNS = 'http://www.w3.org/2000/svg';
-g.innerHTML = '';
-const r = 76, cx=90, cy=90;
-const circumference = 2*Math.PI*r;
-const quarter = circumference/4;
-CRIT.forEach((c,i)=>{
-const val = Number(sliders[c.key] ? sliders[c.key].value : 0);
-const len = quarter * (val/10);
-const circle = document.createElementNS(svgNS,'circle');
-circle.setAttribute('cx', cx);
-circle.setAttribute('cy', cy);
-circle.setAttribute('r', r);
-circle.setAttribute('stroke', c.hex);
-circle.setAttribute('stroke-dasharray', `${len} ${circumference-len}`);
-circle.setAttribute('transform', `rotate(${-90 + i*90} ${cx} ${cy})`);
-circle.style.transition = 'stroke-dasharray .25s ease';
-g.appendChild(circle);
-});
-document.getElementById('gaugeTotalText').textContent = currentTotal();
-}
+  function currentTotal(){
+    return CRIT.reduce((sum,c)=> sum + Number(sliders[c.key] ? sliders[c.key].value : 0), 0);
+  }
 
-async function loadExistingScoreForSelection(){
-if(!myLock) return;
-const teamSelectEl = document.getElementById('teamSelect');
-if(!teamSelectEl) return;
-const teamId = teamSelectEl.value;
-const judgeNum = myLock.num;
-const pill = document.getElementById('scoreStatusPill');
-if(!teamId){ if(pill) pill.innerHTML=''; return; }
-let existing = null;
-if(scoresCol) {
-try{
-const snap = await scoresCol.doc(scoreDocId(teamId, judgeNum)).get();
-existing = snap.exists ? snap.data() : null;
-}catch(e){ existing = null; }
-}
-if(existing){
-CRIT.forEach(c=>{
-if(sliders[c.key]) {
-sliders[c.key].value = existing[c.key] || 0;
-document.getElementById('val-'+c.key).textContent = existing[c.key] || 0;
-}
-});
-if(pill) pill.innerHTML = '<span class="status-pill">✓ Editing your previous score for this team</span>';
-} else {
-CRIT.forEach(c=>{
-if(sliders[c.key]) {
-sliders[c.key].value = 0;
-document.getElementById('val-'+c.key).textContent = 0;
-}
-});
-if(pill) pill.innerHTML = '<span class="status-pill new">＋ New score for this team</span>';
-}
-updateGauge();
-}
-const teamSelectEl = document.getElementById('teamSelect');
-if(teamSelectEl) teamSelectEl.addEventListener('change', loadExistingScoreForSelection);
+  function updateGauge(){
+    const g = document.getElementById('gaugeSegs');
+    if(!g) return;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    g.innerHTML = '';
+    const r = 76, cx=90, cy=90;
+    const circumference = 2*Math.PI*r;
+    const quarter = circumference/4;
+    CRIT.forEach((c,i)=>{
+      const val = Number(sliders[c.key] ? sliders[c.key].value : 0);
+      const len = quarter * (val/10);
+      const circle = document.createElementNS(svgNS,'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('stroke', c.hex);
+      circle.setAttribute('stroke-dasharray', `${len} ${circumference-len}`);
+      circle.setAttribute('transform', `rotate(${-90 + i*90} ${cx} ${cy})`);
+      circle.style.transition = 'stroke-dasharray .25s ease';
+      g.appendChild(circle);
+    });
+    document.getElementById('gaugeTotalText').textContent = currentTotal();
+  }
 
-document.getElementById('submitBtn').addEventListener('click', async ()=>{
-if(!myLock){ showToast('Register as a judge first'); return; }
-const teamId = document.getElementById('teamSelect').value;
-const judgeNum = myLock.num;
-const judgeName = myLock.name;
-if(!teamId){ showToast('Add a team first'); return; }
-const payload = {
-teamId: teamId,
-judgeNum: Number(judgeNum),
-judgeName: judgeName,
-theme: Number(sliders.theme.value),
-story: Number(sliders.story.value),
-edit: Number(sliders.edit.value),
-tech: Number(sliders.tech.value),
-total: currentTotal(),
-ts: Date.now()
-};
-const btn = document.getElementById('submitBtn');
-btn.disabled = true; btn.textContent = 'Saving…';
-if(scoresCol) {
-try{
-await scoresCol.doc(scoreDocId(teamId, judgeNum)).set(payload);
-showToast('Score submitted ✓');
-document.getElementById('scoreStatusPill').innerHTML = '<span class="status-pill">✓ Editing your previous score for this team</span>';
-}catch(e){
-alert("Firestore error: Ensure database rules allow public writes, or check connection.");
-showToast('Could not save — try again');
-}
-} else {
-showToast('Offline Mode: Score cannot sync');
-}
-btn.disabled = false; btn.textContent = 'Submit Score';
-});
+  async function loadExistingScoreForSelection(){
+    if(!myLock) return;
+    const teamSelectEl = document.getElementById('teamSelect');
+    if(!teamSelectEl) return;
+    const teamId = teamSelectEl.value;
+    const judgeNum = myLock.num;
+    const pill = document.getElementById('scoreStatusPill');
+    if(!teamId){ if(pill) pill.innerHTML=''; return; }
+    let existing = null;
+    if(scoresCol) {
+      try{
+        const snap = await scoresCol.doc(scoreDocId(teamId, judgeNum)).get();
+        existing = snap.exists ? snap.data() : null;
+      }catch(e){ existing = null; }
+    }
+    if(existing){
+      CRIT.forEach(c=>{
+        if(sliders[c.key]) {
+          sliders[c.key].value = existing[c.key] || 0;
+          document.getElementById('val-'+c.key).textContent = existing[c.key] || 0;
+        }
+      });
+      if(pill) pill.innerHTML = '<span class="status-pill">✓ Editing your previous score for this team</span>';
+    } else {
+      CRIT.forEach(c=>{
+        if(sliders[c.key]) {
+          sliders[c.key].value = 0;
+          document.getElementById('val-'+c.key).textContent = 0;
+        }
+      });
+      if(pill) pill.innerHTML = '<span class="status-pill new">＋ New score for this team</span>';
+    }
+    updateGauge();
+  }
+  const teamSelectEl = document.getElementById('teamSelect');
+  if(teamSelectEl) teamSelectEl.addEventListener('change', loadExistingScoreForSelection);
 
-// ---------- judge lock / registration ----------
-function renderGateState(){
-const gate = document.getElementById('gateCard');
-const banner = document.getElementById('lockedBanner');
-const body = document.getElementById('scoreBody');
-if(myLock){
-if(gate) gate.style.display = 'none';
-if(banner) banner.style.display = '';
-if(body) body.style.display = '';
-document.getElementById('lockedLabel').textContent = `🔒 Judge ${myLock.num} — ${myLock.name}`;
-loadExistingScoreForSelection();
-} else {
-if(gate) gate.style.display = '';
-if(banner) banner.style.display = 'none';
-if(body) body.style.display = 'none';
-loadAvailableJudges();
-}
-}
+  document.getElementById('submitBtn').addEventListener('click', async ()=>{
+    if(!myLock){ showToast('Register as a judge first'); return; }
+    const teamId = document.getElementById('teamSelect').value;
+    const judgeNum = myLock.num;
+    const judgeName = myLock.name;
+    if(!teamId){ showToast('Add a team first'); return; }
+    const payload = {
+      teamId: teamId,
+      judgeNum: Number(judgeNum),
+      judgeName: judgeName,
+      theme: Number(sliders.theme.value),
+      story: Number(sliders.story.value),
+      edit: Number(sliders.edit.value),
+      tech: Number(sliders.tech.value),
+      total: currentTotal(),
+      ts: Date.now()
+    };
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    if(scoresCol) {
+      try{
+        await scoresCol.doc(scoreDocId(teamId, judgeNum)).set(payload);
+        showToast('Score submitted ✓');
+        document.getElementById('scoreStatusPill').innerHTML = '<span class="status-pill">✓ Editing your previous score for this team</span>';
+      }catch(e){
+        showToast('Could not save — try again');
+      }
+    }
+    btn.disabled = false; btn.textContent = 'Submit Score';
+  });
 
-function checkExistingLock(){
-try{
-const raw = localStorage.getItem(MY_LOCK_KEY);
-myLock = raw ? JSON.parse(raw) : null;
-}catch(e){ myLock = null; }
-renderGateState();
-}
+  // ---------- judge lock / registration ----------
+  function renderGateState(){
+    const gate = document.getElementById('gateCard');
+    const banner = document.getElementById('lockedBanner');
+    const body = document.getElementById('scoreBody');
+    if(myLock){
+      if(gate) gate.style.display = 'none';
+      if(banner) banner.style.display = '';
+      if(body) body.style.display = '';
+      document.getElementById('lockedLabel').textContent = `🔒 Judge ${myLock.num} — ${myLock.name}`;
+      loadExistingScoreForSelection();
+    } else {
+      if(gate) gate.style.display = '';
+      if(banner) banner.style.display = 'none';
+      if(body) body.style.display = 'none';
+      loadAvailableJudges();
+    }
+  }
 
-document.getElementById('startJudgingBtn').addEventListener('click', async ()=>{
-const judgeNum = judgeSelect.value;
-if(!judgeNum){
-showToast('No judge slots available');
-return;
-}
-const nameInput = document.getElementById('judgeName');
-const name = nameInput.value.trim();
-if(!name){
-nameInput.style.borderColor = 'var(--danger)';
-nameInput.focus();
-showToast('Your name is required to register');
-return;
-}
-nameInput.style.borderColor = '';
+  function checkExistingLock(){
+    try{
+      const raw = localStorage.getItem(MY_LOCK_KEY);
+      myLock = raw ? JSON.parse(raw) : null;
+    }catch(e){ myLock = null; }
+    renderGateState();
+  }
 
-const btn = document.getElementById('startJudgingBtn');
-btn.disabled = true; btn.textContent = 'Checking…';
+  document.getElementById('startJudgingBtn').addEventListener('click', async ()=>{
+    const judgeNum = judgeSelect.value;
+    if(!judgeNum){ showToast('No judge slots available'); return; }
+    const nameInput = document.getElementById('judgeName');
+    const name = nameInput.value.trim();
+    if(!name){
+      nameInput.style.borderColor = 'var(--danger)';
+      nameInput.focus();
+      showToast('Your name is required to register');
+      return;
+    }
+    nameInput.style.borderColor = '';
 
-let claim = null;
-if(claimsCol) {
-try{
-const snap = await claimsCol.doc(String(judgeNum)).get();
-claim = snap.exists ? snap.data() : null;
-}catch(e){ claim = null; }
-}
+    const btn = document.getElementById('startJudgingBtn');
+    btn.disabled = true; btn.textContent = 'Checking…';
 
-if(claim && claim.name.trim().toLowerCase() !== name.toLowerCase()){
-btn.disabled = false; btn.textContent = 'Start Judging';
-alert(`Judge ${judgeNum} is already registered to "${claim.name}". If that isn't you, choose another slot or ask the organizer to release it.`);
-return;
-}
+    let claim = null;
+    if(claimsCol) {
+      try{
+        const snap = await claimsCol.doc(String(judgeNum)).get();
+        claim = snap.exists ? snap.data() : null;
+      }catch(e){ claim = null; }
+    }
 
-try{
-if(claimsCol) {
-await claimsCol.doc(String(judgeNum)).set({name, ts: Date.now()});
-}
-localStorage.setItem(MY_LOCK_KEY, JSON.stringify({num: Number(judgeNum), name}));
-}catch(e){
-btn.disabled = false; btn.textContent = 'Start Judging';
-alert("Registration failed. If you just created this Firebase instance, ensure your Firestore Rules are set to public test mode (allow read, write: if true;)");
-showToast('Could not register — try again');
-return;
-}
-myLock = {num: Number(judgeNum), name};
-btn.disabled = false; btn.textContent = 'Start Judging';
-renderGateState();
-showToast(`Registered as Judge ${judgeNum}`);
-});
+    if(claim && claim.name.trim().toLowerCase() !== name.toLowerCase()){
+      btn.disabled = false; btn.textContent = 'Start Judging';
+      alert(`Judge ${judgeNum} is already taken.`);
+      return;
+    }
 
-document.getElementById('resetLockBtn').addEventListener('click', ()=>{
-if(!confirm('Remove this device\'s judge registration?')) return;
-localStorage.removeItem(MY_LOCK_KEY);
-myLock = null;
-document.getElementById('judgeName').value = '';
-renderGateState();
-showToast('Registration removed on this device');
-});
+    try{
+      if(claimsCol) await claimsCol.doc(String(judgeNum)).set({name, ts: Date.now()});
+      localStorage.setItem(MY_LOCK_KEY, JSON.stringify({num: Number(judgeNum), name}));
+    }catch(e){
+      btn.disabled = false; btn.textContent = 'Start Judging';
+      showToast('Could not register — try again');
+      return;
+    }
+    myLock = {num: Number(judgeNum), name};
+    btn.disabled = false; btn.textContent = 'Start Judging';
+    renderGateState();
+    showToast(`Registered as Judge ${judgeNum}`);
+  });
 
-// ---------- judge registrations (admin) ----------
-async function renderClaimList(){
-const wrap = document.getElementById('claimList');
-if(!wrap) return;
-wrap.innerHTML = '<div class="loader" style="padding:10px 0;">Loading…</div>';
-let rows = [];
-if(claimsCol) {
-try{
-const snap = await claimsCol.get();
-rows = snap.docs.map(d => ({num: Number(d.id), name: d.data().name || '—'}))
-.sort((a,b)=> a.num - b.num);
-}catch(e){ rows = []; }
-}
-if(rows.length === 0){
-wrap.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No judges registered yet.</div>';
-return;
-}
-wrap.innerHTML = rows.map(r => `
-<div class="team-row">
-<div style="flex:1; font-size:13.5px;"><b style="color:var(--gold-soft);">Judge ${r.num}</b> — ${escapeHtml(r.name)}</div>
-<button class="ghost release-claim" data-num="${r.num}" style="font-size:11px; padding:7px 10px;">Release</button>
-</div>
-`).join('');
-wrap.querySelectorAll('.release-claim').forEach(btn=>{
-btn.addEventListener('click', async (e)=>{
-const num = e.target.dataset.num;
-if(!confirm(`Release Judge ${num}'s registration?`)) return;
-try{ if(claimsCol) await claimsCol.doc(String(num)).delete(); }catch(e){}
-renderClaimList();
-if(!myLock) loadAvailableJudges();
-showToast(`Judge ${num} slot released`);
-});
-});
-}
+  document.getElementById('resetLockBtn').addEventListener('click', ()=>{
+    if(!confirm('Remove this device\'s judge registration?')) return;
+    localStorage.removeItem(MY_LOCK_KEY);
+    myLock = null;
+    document.getElementById('judgeName').value = '';
+    renderGateState();
+    showToast('Registration removed on this device');
+  });
 
-// ---------- leaderboard (live) ----------
-function renderLeaderboard(allScores){
-const content = document.getElementById('lbContent');
-if(!content) return;
-const byTeam = {};
-allScores.forEach(s=>{
-if(!s || !s.teamId) return;
-if(!byTeam[s.teamId]) byTeam[s.teamId] = [];
-byTeam[s.teamId].push(s);
-});
+  // ---------- judge registrations (admin) ----------
+  async function renderClaimList(){
+    const wrap = document.getElementById('claimList');
+    if(!wrap) return;
+    wrap.innerHTML = '<div class="loader" style="padding:10px 0;">Loading…</div>';
+    let rows = [];
+    if(claimsCol) {
+      try{
+        const snap = await claimsCol.get();
+        rows = snap.docs.map(d => ({num: Number(d.id), name: d.data().name || '—'}))
+                         .sort((a,b)=> a.num - b.num);
+      }catch(e){ rows = []; }
+    }
+    if(rows.length === 0){
+      wrap.innerHTML = '<div style="font-size:12.5px; color:var(--text-muted);">No judges registered yet.</div>';
+      return;
+    }
+    wrap.innerHTML = rows.map(r => `
+      <div class="team-row">
+        <div style="flex:1; font-size:13.5px;"><b style="color:var(--gold-soft);">Judge ${r.num}</b> — ${escapeHtml(r.name)}</div>
+        <button class="ghost release-claim" data-num="${r.num}" style="font-size:11px; padding:7px 10px;">Release</button>
+      </div>
+    `).join('');
+    wrap.querySelectorAll('.release-claim').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const num = e.target.dataset.num;
+        if(!confirm(`Release Judge ${num}'s registration?`)) return;
+        try{ if(claimsCol) await claimsCol.doc(String(num)).delete(); }catch(e){}
+        renderClaimList();
+        if(!myLock) loadAvailableJudges();
+        showToast(`Judge ${num} slot released`);
+      });
+    });
+  }
 
-document.getElementById('lbUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
+  // ---------- leaderboard ----------
+  function renderLeaderboard(allScores){
+    const content = document.getElementById('lbContent');
+    if(!content) return;
+    const byTeam = {};
+    allScores.forEach(s=>{
+      if(!s || !s.teamId) return;
+      if(!byTeam[s.teamId]) byTeam[s.teamId] = [];
+      byTeam[s.teamId].push(s);
+    });
 
-if(teams.length === 0){
-content.className = '';
-content.innerHTML = '<div class="empty-state"><div class="glyph">👑</div>No teams added yet.</div>';
-return;
-}
+    document.getElementById('lbUpdated').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
 
-const rows = teams.map(t=>{
-const list = byTeam[t.id] || [];
-const n = list.length;
-const avg = key => n ? (list.reduce((sum,s)=> sum + (s[key]||0), 0) / n) : 0;
-return {
-team: t,
-n,
-avgTotal: avg('total'),
-avg: {theme: avg('theme'), story: avg('story'), edit: avg('edit'), tech: avg('tech')}
-};
-}).sort((a,b)=> b.avgTotal - a.avgTotal);
+    if(teams.length === 0){
+      content.className = '';
+      content.innerHTML = '<div class="empty-state"><div class="glyph">👑</div>No teams added yet.</div>';
+      return;
+    }
 
-content.className = '';
-content.innerHTML = rows.map((r, i)=>{
-const rankClass = i===0 ? 'rank-1' : i===1 ? 'rank-2' : i===2 ? 'rank-3' : '';
-const badge = i===0 ? '👑' : (i+1);
-const bars = CRIT.map(c=>{
-const v = r.avg[c.key];
-const pct = Math.min(100, (v/10)*100);
-return `<div class="bar-row">
-<span class="lbl">${c.name}</span>
-<div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${c.hex}"></div></div>
-<span class="val">${v.toFixed(1)}</span>
-</div>`;
-}).join('');
-return `<div class="team-card ${rankClass}">
-<div class="tc-top">
-<div class="rank-badge">${badge}</div>
-<div class="tc-name">${escapeHtml(r.team.name)}</div>
-<div class="tc-score">
-<div class="num">${r.avgTotal.toFixed(1)}</div>
-<div class="of">of 40</div>
-</div>
-</div>
-<div class="tc-meta">${r.n} judge${r.n===1?'':'s'} scored</div>
-<div class="tc-bars">${bars}</div>
-</div>`;
-}).join('');
-}
+    const rows = teams.map(t=>{
+      const list = byTeam[t.id] || [];
+      const n = list.length;
+      const avg = key => n ? (list.reduce((sum,s)=> sum + (s[key]||0), 0) / n) : 0;
+      return {
+        team: t,
+        n,
+        avgTotal: avg('total'),
+        avg: {theme: avg('theme'), story: avg('story'), edit: avg('edit'), tech: avg('tech')}
+      };
+    }).sort((a,b)=> b.avgTotal - a.avgTotal);
 
-function startLeaderboardListener(){
-if(leaderboardUnsub || !scoresCol) return;
-const content = document.getElementById('lbContent');
-if(!content) return;
-content.className = 'loader';
-content.textContent = 'Loading scores…';
-leaderboardUnsub = scoresCol.onSnapshot(snap=>{
-const allScores = snap.docs.map(d=> d.data());
-renderLeaderboard(allScores);
-}, err=>{
-content.className = '';
-content.innerHTML = '<div class="empty-state"><div class="glyph">⚠️</div>Permissions Error: Ensure Cloud Firestore Rules allow public reads.</div>';
-});
-}
-function stopLeaderboardListener(){
-if(leaderboardUnsub){ leaderboardUnsub(); leaderboardUnsub = null; }
-}
-document.getElementById('refreshLb').addEventListener('click', ()=>{
-stopLeaderboardListener();
-startLeaderboardListener();
-});
+    content.className = '';
+    content.innerHTML = rows.map((r, i)=>{
+      const rankClass = i===0 ? 'rank-1' : i===1 ? 'rank-2' : i===2 ? 'rank-3' : '';
+      const badge = i===0 ? '👑' : (i+1);
+      const bars = CRIT.map(c=>{
+        const v = r.avg[c.key];
+        const pct = Math.min(100, (v/10)*100);
+        return `<div class="bar-row">
+          <span class="lbl">${c.name}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${c.hex}"></div></div>
+          <span class="val">${v.toFixed(1)}</span>
+        </div>`;
+      }).join('');
+      return `<div class="team-card ${rankClass}">
+        <div class="tc-top">
+          <div class="rank-badge">${badge}</div>
+          <div class="tc-name">${escapeHtml(r.team.name)}</div>
+          <div class="tc-score">
+            <div class="num">${r.avgTotal.toFixed(1)}</div>
+            <div class="of">of 40</div>
+          </div>
+        </div>
+        <div class="tc-meta">${r.n} judge${r.n===1?'':'s'} scored</div>
+        <div class="tc-bars">${bars}</div>
+      </div>`;
+    }).join('');
+  }
 
-// ---------- danger zone ----------
-document.getElementById('clearScoresBtn').addEventListener('click', async ()=>{
-if(!confirm('This will permanently delete every submitted score. Continue?')) return;
-if(!scoresCol) return;
-try{
-const snap = await scoresCol.get();
-const batchDeletes = snap.docs.map(d => d.ref.delete());
-await Promise.all(batchDeletes);
-showToast('All scores cleared');
-}catch(e){
-showToast('Something went wrong clearing scores');
-}
-});
+  function startLeaderboardListener(){
+    if(leaderboardUnsub || !scoresCol) return; 
+    const content = document.getElementById('lbContent');
+    if(!content) return;
+    content.className = 'loader';
+    content.textContent = 'Loading scores…';
+    leaderboardUnsub = scoresCol.onSnapshot(snap=>{
+      const allScores = snap.docs.map(d=> d.data());
+      renderLeaderboard(allScores);
+    }, err=>{
+      content.className = '';
+      content.innerHTML = '<div class="empty-state"><div class="glyph">⚠️</div>Permissions error or connection lost.</div>';
+    });
+  }
+  function stopLeaderboardListener(){
+    if(leaderboardUnsub){ leaderboardUnsub(); leaderboardUnsub = null; }
+  }
+  document.getElementById('refreshLb').addEventListener('click', ()=>{
+    stopLeaderboardListener();
+    startLeaderboardListener();
+  });
 
-function fallbackLocalSetup() {
-populateJudgeDropdown(new Set(), document.getElementById('startJudgingBtn'));
-loadTeams();
-checkExistingLock();
-}
+  // ---------- danger zone ----------
+  document.getElementById('clearScoresBtn').addEventListener('click', async ()=>{
+    if(!confirm('Permanently delete all submitted scores?')) return;
+    if(!scoresCol) return;
+    try{
+      const snap = await scoresCol.get();
+      const batchDeletes = snap.docs.map(d => d.ref.delete());
+      await Promise.all(batchDeletes);
+      showToast('All scores cleared');
+    }catch(e){
+      showToast('Error clearing scores');
+    }
+  });
 
-// ---------- init ----------
-updateGauge();
-loadTeams();
-checkExistingLock();
+  function fallbackLocalSetup() {
+    populateJudgeDropdown(new Set(), document.getElementById('startJudgingBtn'));
+    loadTeams();
+    checkExistingLock();
+  }
+
+  // ---------- init ----------
+  updateGauge();
+  loadTeams();
+  checkExistingLock();
 })();
 </script>
 
